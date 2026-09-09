@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: sahayak_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sahayak_user
+      POSTGRES_PASSWORD: sahayak_pass
+      POSTGRES_DB: sahayak_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - sahayak_pg_data:/var/lib/postgresql/data
+
+  mongo:
+    image: mongo:7
+    container_name: sahayak_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - sahayak_mongo_data:/data/db
+
+  # Local Ollama for the offline/open-source LLM provider option.
+  # Optional — only needed if LLM_PROVIDER=ollama.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sahayak_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - sahayak_ollama_data:/root/.ollama
+
+  # Cache + rate-limiting store. Not a system of record — safe to flush.
+  redis:
+    image: redis:7-alpine
+    container_name: sahayak_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "no"]
+    volumes:
+      - sahayak_redis_data:/data
+
+volumes:
+  sahayak_pg_data:
+  sahayak_mongo_data:
+  sahayak_ollama_data:
+  sahayak_redis_data:

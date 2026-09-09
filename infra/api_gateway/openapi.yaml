@@ -1,0 +1,74 @@
+openapi: 3.0.1
+info:
+  title: Sahayak Banking Core
+  version: "1.0.0"
+  description: >
+    AWS API Gateway (HTTP API) definition fronting the BlackSheep
+    microservices. Import this spec directly into API Gateway, or use
+    it with Terraform's aws_apigatewayv2_api `body` argument.
+
+x-amazon-apigateway-cors:
+  allowOrigins:
+    - "*"
+  allowMethods: ["GET", "POST", "OPTIONS"]
+
+paths:
+  /api/v1/inclusion/credit-score:
+    post:
+      summary: Compute alt-data credit score for a financially excluded user
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: POST
+        uri: "${APP_SERVICE_URL}/api/v1/inclusion/credit-score"
+        connectionType: VPC_LINK
+        connectionId: "${VPC_LINK_ID}"
+
+  /api/v1/fraud/transactions/evaluate:
+    post:
+      summary: Real-time fraud evaluation for an incoming transaction
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: POST
+        uri: "${APP_SERVICE_URL}/api/v1/fraud/transactions/evaluate"
+        connectionType: VPC_LINK
+        connectionId: "${VPC_LINK_ID}"
+
+  /api/v1/lending/applications:
+    post:
+      summary: Submit a loan application for cash-flow-based underwriting
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: POST
+        uri: "${APP_SERVICE_URL}/api/v1/lending/applications"
+        connectionType: VPC_LINK
+        connectionId: "${VPC_LINK_ID}"
+
+  /api/v1/insurance/claims:
+    post:
+      summary: File an insurance claim (auto-triggers parametric payout when eligible)
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: POST
+        uri: "${APP_SERVICE_URL}/api/v1/insurance/claims"
+        connectionType: VPC_LINK
+        connectionId: "${VPC_LINK_ID}"
+
+  /api/v1/assistant/ask:
+    post:
+      summary: RAG-grounded Q&A assistant (multi-LLM-provider)
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: POST
+        uri: "${APP_SERVICE_URL}/api/v1/assistant/ask"
+        connectionType: VPC_LINK
+        connectionId: "${VPC_LINK_ID}"
+
+  /health:
+    get:
+      summary: Health check
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: GET
+        uri: "${APP_SERVICE_URL}/health"
+        connectionType: VPC_LINK
+        connectionId: "${VPC_LINK_ID}"

@@ -1,0 +1,68 @@
+[
+  {
+    "user_id": "USR-1001",
+    "avg_monthly_upi_txn_count": 22,
+    "avg_monthly_upi_volume_inr": 8100,
+    "utility_bill_ontime_ratio": 0.92,
+    "mobile_recharge_regularity_score": 0.81,
+    "gst_filing_present": false,
+    "existing_loan_count": 1,
+    "existing_loan_default_flag": false,
+    "months_of_transaction_history": 14
+  },
+  {
+    "user_id": "USR-1002",
+    "avg_monthly_upi_txn_count": 6,
+    "avg_monthly_upi_volume_inr": 3100,
+    "utility_bill_ontime_ratio": 0.55,
+    "mobile_recharge_regularity_score": 0.40,
+    "gst_filing_present": false,
+    "existing_loan_count": 0,
+    "existing_loan_default_flag": false,
+    "months_of_transaction_history": 4
+  },
+  {
+    "user_id": "USR-1003",
+    "avg_monthly_upi_txn_count": 58,
+    "avg_monthly_upi_volume_inr": 21000,
+    "utility_bill_ontime_ratio": 0.88,
+    "mobile_recharge_regularity_score": 0.90,
+    "gst_filing_present": false,
+    "existing_loan_count": 2,
+    "existing_loan_default_flag": false,
+    "months_of_transaction_history": 20
+  },
+  {
+    "user_id": "USR-1004",
+    "avg_monthly_upi_txn_count": 45,
+    "avg_monthly_upi_volume_inr": 48000,
+    "utility_bill_ontime_ratio": 0.99,
+    "mobile_recharge_regularity_score": 0.95,
+    "gst_filing_present": false,
+    "existing_loan_count": 1,
+    "existing_loan_default_flag": false,
+    "months_of_transaction_history": 36
+  },
+  {
+    "user_id": "USR-1005",
+    "avg_monthly_upi_txn_count": 70,
+    "avg_monthly_upi_volume_inr": 32000,
+    "utility_bill_ontime_ratio": 0.83,
+    "mobile_recharge_regularity_score": 0.77,
+    "gst_filing_present": true,
+    "existing_loan_count": 3,
+    "existing_loan_default_flag": true,
+    "months_of_transaction_history": 28
+  },
+  {
+    "user_id": "USR-1006",
+    "avg_monthly_upi_txn_count": 2,
+    "avg_monthly_upi_volume_inr": 900,
+    "utility_bill_ontime_ratio": 0.30,
+    "mobile_recharge_regularity_score": 0.25,
+    "gst_filing_present": false,
+    "existing_loan_count": 0,
+    "existing_loan_default_flag": false,
+    "months_of_transaction_history": 1
+  }
+]

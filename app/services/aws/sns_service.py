@@ -1,0 +1,52 @@
+"""
+SNS service wrapper — pushes real-time alerts to downstream subscribers
+(SMS to end users via SNS-SMS, email via SES-subscribed topic, or
+internal ops Slack webhook via Lambda subscriber).
+"""
+import json
+
+import boto3
+
+from app.config import get_settings
+
+settings = get_settings()
+
+
+class SNSService:
+    def __init__(self) -> None:
+        self._client = boto3.client(
+            "sns",
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+        )
+
+    def publish_fraud_alert(self, user_id: str, txn_ref: str, reason: str, risk_score: float) -> str:
+        message = {
+            "type": "FRAUD_ALERT",
+            "user_id": user_id,
+            "txn_ref": txn_ref,
+            "reason": reason,
+            "risk_score": risk_score,
+        }
+        resp = self._client.publish(
+            TopicArn=settings.sns_topic_fraud_alerts,
+            Message=json.dumps(message),
+            Subject="Suspicious transaction detected",
+            MessageAttributes={"event_type": {"DataType": "String", "StringValue": "fraud_alert"}},
+        )
+        return resp["MessageId"]
+
+    def publish_loan_status_update(self, user_id: str, application_ref: str, status: str) -> str:
+        message = {
+            "type": "LOAN_STATUS_UPDATE",
+            "user_id": user_id,
+            "application_ref": application_ref,
+            "status": status,
+        }
+        resp = self._client.publish(
+            TopicArn=settings.sns_topic_loan_notifications,
+            Message=json.dumps(message),
+            Subject=f"Loan application {application_ref} update",
+        )
+        return resp["MessageId"]

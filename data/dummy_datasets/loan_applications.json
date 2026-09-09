@@ -1,0 +1,50 @@
+[
+  {
+    "application_id": "LN-2001",
+    "user_id": "USR-1003",
+    "loan_type": "personal",
+    "requested_amount_inr": 50000,
+    "purpose": "medical_emergency",
+    "collateral_provided": false,
+    "gst_data_available": false,
+    "bank_statement_months_provided": 6,
+    "status": "under_review",
+    "submitted_at": "2026-08-20T10:00:00Z"
+  },
+  {
+    "application_id": "LN-2002",
+    "user_id": "USR-1005",
+    "loan_type": "msme_working_capital",
+    "requested_amount_inr": 300000,
+    "purpose": "inventory_purchase",
+    "collateral_provided": false,
+    "gst_data_available": true,
+    "bank_statement_months_provided": 12,
+    "status": "approved",
+    "submitted_at": "2026-07-15T09:30:00Z"
+  },
+  {
+    "application_id": "LN-2003",
+    "user_id": "USR-1001",
+    "loan_type": "agri_credit",
+    "requested_amount_inr": 80000,
+    "purpose": "crop_input_purchase",
+    "collateral_provided": true,
+    "gst_data_available": false,
+    "bank_statement_months_provided": 8,
+    "status": "under_review",
+    "submitted_at": "2026-08-28T07:45:00Z"
+  },
+  {
+    "application_id": "LN-2004",
+    "user_id": "USR-1002",
+    "loan_type": "microfinance",
+    "requested_amount_inr": 15000,
+    "purpose": "small_business_setup",
+    "collateral_provided": false,
+    "gst_data_available": false,
+    "bank_statement_months_provided": 2,
+    "status": "rejected",
+    "submitted_at": "2026-08-10T12:15:00Z"
+  }
+]

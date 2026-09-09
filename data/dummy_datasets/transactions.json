@@ -1,0 +1,12 @@
+[
+  {"txn_id": "TXN-90001", "user_id": "USR-1001", "amount_inr": 500,  "type": "UPI_OUT", "merchant": "Kirana Store",      "location": "Nashik, MH",     "device_id": "DEV-A1", "timestamp": "2026-09-01T09:15:00Z", "is_flagged": false},
+  {"txn_id": "TXN-90002", "user_id": "USR-1001", "amount_inr": 15000,"type": "UPI_OUT", "merchant": "Unknown Wallet",   "location": "Lagos, NG",      "device_id": "DEV-B7", "timestamp": "2026-09-01T09:17:00Z", "is_flagged": true},
+  {"txn_id": "TXN-90003", "user_id": "USR-1003", "amount_inr": 2200, "type": "UPI_OUT", "merchant": "Swiggy",          "location": "Bengaluru, KA",  "device_id": "DEV-C2", "timestamp": "2026-09-02T13:05:00Z", "is_flagged": false},
+  {"txn_id": "TXN-90004", "user_id": "USR-1003", "amount_inr": 48000,"type": "NEFT_OUT","merchant": "New Beneficiary", "location": "Bengaluru, KA",  "device_id": "DEV-C2", "timestamp": "2026-09-02T13:06:30Z", "is_flagged": true},
+  {"txn_id": "TXN-90005", "user_id": "USR-1004", "amount_inr": 60000,"type": "IMPS_OUT","merchant": "Loan App XYZ",    "location": "Kochi, KL",      "device_id": "DEV-D9", "timestamp": "2026-09-03T22:40:00Z", "is_flagged": true},
+  {"txn_id": "TXN-90006", "user_id": "USR-1004", "amount_inr": 1200, "type": "UPI_OUT", "merchant": "BigBasket",       "location": "Kochi, KL",      "device_id": "DEV-D1", "timestamp": "2026-09-04T10:00:00Z", "is_flagged": false},
+  {"txn_id": "TXN-90007", "user_id": "USR-1005", "amount_inr": 900,  "type": "UPI_OUT", "merchant": "Grocery",         "location": "Lucknow, UP",    "device_id": "DEV-E3", "timestamp": "2026-09-04T11:20:00Z", "is_flagged": false},
+  {"txn_id": "TXN-90008", "user_id": "USR-1005", "amount_inr": 99000,"type": "UPI_OUT", "merchant": "Crypto Exchange", "location": "Lucknow, UP",    "device_id": "DEV-F8", "timestamp": "2026-09-04T11:22:00Z", "is_flagged": true},
+  {"txn_id": "TXN-90009", "user_id": "USR-1002", "amount_inr": 300,  "type": "CASH_DEPOSIT", "merchant": "BC Agent",   "location": "Patna, BR",      "device_id": "DEV-G4", "timestamp": "2026-09-05T08:00:00Z", "is_flagged": false},
+  {"txn_id": "TXN-90010", "user_id": "USR-1006", "amount_inr": 50,   "type": "UPI_OUT", "merchant": "Tea Stall",       "location": "Madurai, TN",    "device_id": "DEV-H6", "timestamp": "2026-09-05T18:30:00Z", "is_flagged": false}
+]

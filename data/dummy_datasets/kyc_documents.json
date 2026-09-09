@@ -1,0 +1,28 @@
+[
+  {
+    "user_id": "USR-1001",
+    "documents": [
+      {"doc_type": "aadhaar", "s3_key": "kyc/USR-1001/aadhaar.pdf", "verified": true, "verified_by": "auto_ocr"},
+      {"doc_type": "selfie", "s3_key": "kyc/USR-1001/selfie.jpg", "verified": true, "verified_by": "face_match"}
+    ],
+    "risk_flags": [],
+    "updated_at": "2026-08-01T10:00:00Z"
+  },
+  {
+    "user_id": "USR-1002",
+    "documents": [
+      {"doc_type": "aadhaar", "s3_key": "kyc/USR-1002/aadhaar.pdf", "verified": false, "verified_by": null}
+    ],
+    "risk_flags": ["incomplete_kyc"],
+    "updated_at": "2026-08-03T11:30:00Z"
+  },
+  {
+    "user_id": "USR-1005",
+    "documents": [
+      {"doc_type": "aadhaar", "s3_key": "kyc/USR-1005/aadhaar.pdf", "verified": true, "verified_by": "auto_ocr"},
+      {"doc_type": "gst_certificate", "s3_key": "kyc/USR-1005/gst.pdf", "verified": true, "verified_by": "manual"}
+    ],
+    "risk_flags": ["multiple_active_loans"],
+    "updated_at": "2026-08-15T09:00:00Z"
+  }
+]
