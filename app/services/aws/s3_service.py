@@ -15,15 +15,24 @@ from app.config import get_settings
 
 settings = get_settings()
 
+_client = None  # module-level singleton, see app/services/aws/sns_service.py::_get_client
 
-class S3Service:
-    def __init__(self) -> None:
-        self._client = boto3.client(
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = boto3.client(
             "s3",
             region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
+    return _client
+
+
+class S3Service:
+    def __init__(self) -> None:
+        self._client = _get_client()
 
     def upload_kyc_document(self, user_id: str, doc_type: str, file_bytes: bytes, content_type: str) -> str:
         """Uploads a KYC document under a per-user prefix; returns the S3 key."""
@@ -47,9 +56,9 @@ class S3Service:
     def export_to_data_lake(self, dataset_name: str, jsonl_bytes: bytes) -> str:
         """Lands a batch export (e.g. nightly transaction dump) in the data lake bucket,
         partitioned by dataset name — ready for Glue/Athena/Snowflake ingestion."""
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        key = f"raw/{dataset_name}/dt={datetime.utcnow():%Y-%m-%d}/{dataset_name}.jsonl"
+        key = f"raw/{dataset_name}/dt={datetime.now(timezone.utc):%Y-%m-%d}/{dataset_name}.jsonl"
         self._client.put_object(Bucket=settings.s3_bucket_data_lake, Key=key, Body=jsonl_bytes)
         return key
 

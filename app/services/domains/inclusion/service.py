@@ -54,6 +54,7 @@ class InclusionService:
             score_band=result.band,
             model_version=_MODEL_VERSION,
             explanation=explanation,
+            signal_breakdown=result.signal_breakdown,
         )
         self.db.add(credit_score)
         await self.db.commit()

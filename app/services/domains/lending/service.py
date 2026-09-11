@@ -27,16 +27,38 @@ class LendingService:
         """Simple rule-based decision layer. In production this would call
         a trained underwriting model (e.g. XGBoost) taking the credit score
         as one of several features, with a human-in-the-loop for borderline
-        cases — this scaffold keeps the rule explicit and auditable."""
+        cases — this scaffold keeps the rule explicit and auditable.
+
+        Incorporates collateral and GST-data availability alongside the
+        credit score and bank-statement history, per the cash-flow-based
+        underwriting design described above (previously only the score and
+        bank-statement count were checked, silently ignoring the other two
+        signals the API/docs already advertised as inputs)."""
         if latest_credit_score is None:
             return "under_review"
-        if latest_credit_score >= _AUTO_APPROVE_SCORE_THRESHOLD and application.get("bank_statement_months_provided", 0) >= 6:
-            return "approved"
-        if latest_credit_score <= _AUTO_REJECT_SCORE_THRESHOLD:
+
+        bank_statement_months = application.get("bank_statement_months_provided", 0)
+        has_collateral = bool(application.get("collateral_provided", False))
+        has_gst_data = bool(application.get("gst_data_available", False))
+
+        if latest_credit_score <= _AUTO_REJECT_SCORE_THRESHOLD and not has_collateral:
             return "rejected"
+
+        # Collateral de-risks the loan enough to relax the bank-statement bar;
+        # otherwise require either a longer bank-statement history or GST data
+        # as a substitute income-verification signal.
+        if latest_credit_score >= _AUTO_APPROVE_SCORE_THRESHOLD and (
+            has_collateral
+            or bank_statement_months >= 6
+            or (has_gst_data and bank_statement_months >= 3)
+        ):
+            return "approved"
+
         return "under_review"
 
-    async def submit_application(self, user: User, application_data: dict, latest_credit_score: int | None) -> dict:
+    async def submit_application(
+        self, user: User, application_data: dict, latest_credit_score: int | None, generate_rationale: bool = False
+    ) -> dict:
         decision = self._decide(latest_credit_score, application_data)
 
         application = LoanApplication(
@@ -60,8 +82,23 @@ class LendingService:
         except Exception:
             pass  # non-fatal without live AWS creds
 
+        rationale = None
+        if generate_rationale:
+            # RBI-style plain-language rationale for every decision (not just
+            # credit scoring) — opt-in via the flag so the fast deterministic
+            # path stays free of an LLM call by default; the caller (routes.py)
+            # exposes this as `"explain": true` in the request body.
+            from app.services.domains.lending.agent import LendingUnderwritingAgent
+
+            agent = LendingUnderwritingAgent(self.db)
+            try:
+                rationale = await agent.generate_decision_rationale(decision, application_data, latest_credit_score)
+            except Exception:
+                rationale = None  # best-effort; a rationale-generation failure shouldn't fail the application
+
         return {
             "application_ref": application.application_ref,
             "status": decision,
             "used_credit_score": latest_credit_score,
+            "rationale": rationale,
         }

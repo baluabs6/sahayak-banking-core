@@ -53,19 +53,28 @@ class FraudService:
 
         if history:
             _engine.fit(history)
-        result = _engine.check_transaction(txn_dict, history)
+
+        # DynamoDB velocity counter (per-minute window). Incremented BEFORE
+        # scoring, and keyed on wall-clock time (not txn.timestamp, which
+        # previously fell back to the literal string "now" whenever the
+        # ORM-default timestamp hadn't been populated yet — that made every
+        # such transaction land in the same bucket forever instead of a
+        # real per-minute window). The resulting count is fed into
+        # check_transaction so a velocity spike can actually flag a
+        # transaction — previously this counter was written but never read.
+        velocity_count = None
+        window_key = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+        try:
+            velocity_count = self.dynamodb.increment_txn_velocity(txn.user_id, window_key)
+        except Exception:
+            pass  # non-fatal in demo/local mode without live AWS creds
+
+        result = _engine.check_transaction(txn_dict, history, velocity_count=velocity_count)
 
         # Update Postgres (system of record)
         txn.is_flagged = result.is_flagged
         txn.fraud_score = result.ml_anomaly_score
         await self.db.commit()
-
-        # DynamoDB velocity counter (per-minute window)
-        window_key = f"{txn.timestamp.strftime('%Y%m%d%H%M') if txn.timestamp else 'now'}"
-        try:
-            self.dynamodb.increment_txn_velocity(txn.user_id, window_key)
-        except Exception:
-            pass  # non-fatal in demo/local mode without live AWS creds
 
         narrative = None
         if generate_narrative and result.is_flagged:

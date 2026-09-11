@@ -2,9 +2,15 @@
 Pydantic schemas describing document shapes stored in MongoDB.
 Mongo is schema-flexible, but we still validate at the application boundary.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now — kept consistent with app/models/postgres_models.py
+    so Mongo document timestamps compare correctly against Postgres-derived ones."""
+    return datetime.now(timezone.utc)
 
 
 class KycDocumentEntry(BaseModel):
@@ -18,7 +24,7 @@ class KycDocumentRecord(BaseModel):
     user_id: str
     documents: list[KycDocumentEntry] = Field(default_factory=list)
     risk_flags: list[str] = Field(default_factory=list)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 class FraudEvent(BaseModel):
@@ -28,7 +34,7 @@ class FraudEvent(BaseModel):
     ml_anomaly_score: float
     llm_risk_narrative: str | None = None  # LLM-generated plain-language explanation
     action_taken: str = "flagged_for_review"  # flagged_for_review | auto_blocked | cleared
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class RagQueryLog(BaseModel):
@@ -37,12 +43,12 @@ class RagQueryLog(BaseModel):
     retrieved_doc_ids: list[str] = Field(default_factory=list)
     llm_provider: str
     response_summary: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class DeviceFingerprint(BaseModel):
     device_id: str
     user_ids_seen: list[str] = Field(default_factory=list)
-    first_seen: datetime = Field(default_factory=datetime.utcnow)
-    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    first_seen: datetime = Field(default_factory=_utcnow)
+    last_seen: datetime = Field(default_factory=_utcnow)
     trust_score: float = 0.5

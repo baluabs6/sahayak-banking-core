@@ -5,9 +5,12 @@ Lets the caller pick any of the 4 supported LLM backends per-request.
 """
 from blacksheep import Request, json
 from blacksheep.server.controllers import APIController, post
+from sqlalchemy import select
 
 from app.config import get_settings
+from app.db.postgres import AsyncSessionLocal
 from app.db.redis_client import check_rate_limit
+from app.models.postgres_models import User
 from app.services.ai.rag_service import RAGService
 
 _rag_service = RAGService()
@@ -53,7 +56,10 @@ class AssistantController(APIController):
 
     @post("/ask")
     async def ask(self, request: Request) -> json:
-        """Body: { "query": "...", "llm_provider": "anthropic|openai|ollama|langchain_auto" (optional) }"""
+        """Body: { "query": "...", "llm_provider": "anthropic|openai|ollama|langchain_auto" (optional),
+        "user_ref": "USR-1005" (optional — unlocks account-specific tools: credit score,
+        loan/claim status, fraud-flag explanation; omit for pure document Q&A),
+        "agent_mode": true (default) | false (skip tool-calling, plain RAG document answer only) }"""
         payload = await request.json()
         query = payload.get("query")
         if not query:
@@ -71,5 +77,31 @@ class AssistantController(APIController):
                 status=429,
             )
 
-        result = await _rag_service.answer(query, provider_override=payload.get("llm_provider"))
-        return json(result)
+        if not payload.get("agent_mode", True):
+            # Cheap path: a single retrieval + single LLM call, no tool-calling
+            # loop — useful when the caller just wants the old pure-RAG
+            # behavior without the extra LLM round-trips a tool-calling agent
+            # can take (cost/latency control, per the cross-cutting guardrail).
+            result = await _rag_service.answer(query, provider_override=payload.get("llm_provider"))
+            return json(result)
+
+        # Multi-tool agent: routes to domain tools (credit score, loan/claim
+        # status, fraud-flag explanation) instead of only static documents —
+        # this is the default because the account-specific tools only ever
+        # expose the calling user's own data (see assistant_agent.py), so
+        # there's no new access-control surface being opened by defaulting
+        # to it.
+        from app.services.ai.assistant_agent import MultiToolAssistant
+
+        user_ref = payload.get("user_ref")
+        async with AsyncSessionLocal() as db:
+            user = None
+            if user_ref:
+                user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+                user = user_result.scalar_one_or_none()
+                if user is None:
+                    return json({"error": "Unknown user_ref"}, status=404)
+
+            assistant = MultiToolAssistant(db, _rag_service)
+            result = await assistant.ask(query, user)
+            return json(result)

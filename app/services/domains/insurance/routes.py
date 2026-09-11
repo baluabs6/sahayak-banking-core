@@ -36,3 +36,40 @@ class InsuranceController(APIController):
             service = InsuranceService(db)
             result = await service.file_claim(user, payload)
             return json(result)
+
+    @post("/claims/{claim_ref}/triage")
+    async def triage_claim(self, claim_ref: str) -> json:
+        """Claims triage agent for non-parametric (manual-assessment)
+        claims: drafts a recommended settlement grounded in policy/scheme
+        documents via the RAG layer. Advisory only — a human assessor
+        still confirms the settlement."""
+        from app.services.domains.insurance.agent import InsuranceClaimsAgent
+
+        async with AsyncSessionLocal() as db:
+            from app.models.postgres_models import InsuranceClaim
+
+            claim_result = await db.execute(select(InsuranceClaim).where(InsuranceClaim.claim_ref == claim_ref))
+            claim = claim_result.scalar_one_or_none()
+            if claim is None:
+                return json({"error": "Unknown claim_ref"}, status=404)
+
+            claim_dict = {
+                "policy_type": claim.policy_type,
+                "trigger_event": claim.trigger_event,
+                "region": claim.region,
+                "claim_amount_inr": float(claim.claim_amount_inr),
+            }
+
+            kyc_docs = None
+            try:
+                from app.db.mongo import COLLECTION_KYC_DOCUMENTS, get_mongo_db
+
+                db_mongo = get_mongo_db()
+                record = await db_mongo[COLLECTION_KYC_DOCUMENTS].find_one({"user_id": claim.user_id})
+                kyc_docs = record.get("documents") if record else None
+            except Exception:
+                kyc_docs = None
+
+            agent = InsuranceClaimsAgent()
+            result = await agent.triage_claim(claim.user_id, claim_dict, kyc_documents=kyc_docs)
+            return json({"claim_ref": claim_ref, **result})

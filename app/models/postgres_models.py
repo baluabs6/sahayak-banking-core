@@ -5,9 +5,9 @@ insurance (claims). Kept in one module for a small service; split into
 per-domain modules if the codebase grows.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,15 @@ from app.db.postgres import Base
 
 def _uuid() -> str:
     return str(uuid.uuid4())
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now. Used as every timestamp default in this module —
+    do not use the deprecated, naive `datetime.utcnow()` here or anywhere else
+    that timestamps get compared against `_utcnow()`-derived values (fraud
+    velocity windows, cache TTL math, etc.), or comparisons will raise
+    `TypeError: can't compare offset-naive and offset-aware datetimes`."""
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
@@ -34,7 +43,7 @@ class User(Base):
     kyc_status: Mapped[str] = mapped_column(String(20), default="not_started")
     language_pref: Mapped[str] = mapped_column(String(5), default="en")
     aadhaar_linked: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     credit_scores: Mapped[list["CreditScore"]] = relationship(back_populates="user")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
@@ -52,7 +61,13 @@ class CreditScore(Base):
     score_band: Mapped[str] = mapped_column(String(20))  # poor | fair | good | excellent
     model_version: Mapped[str] = mapped_column(String(30))
     explanation: Mapped[str] = mapped_column(Text)  # human-readable reasoning (LLM-generated)
-    computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Raw per-factor scorecard weights (0-1 scale) behind the score — persisted
+    # so the credit-improvement coach agent (inclusion/agent.py) can act on a
+    # user's most recent score without the caller having to resupply it.
+    # Previously only the rendered explanation text was stored, so coaching
+    # against a historical score was impossible without recomputing it.
+    signal_breakdown: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="credit_scores")
 
@@ -70,7 +85,7 @@ class Transaction(Base):
     device_id: Mapped[str] = mapped_column(String(30))
     is_flagged: Mapped[bool] = mapped_column(Boolean, default=False)
     fraud_score: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="transactions")
 
@@ -88,7 +103,7 @@ class LoanApplication(Base):
     gst_data_available: Mapped[bool] = mapped_column(Boolean, default=False)
     bank_statement_months_provided: Mapped[int] = mapped_column(default=0)
     status: Mapped[str] = mapped_column(String(20), default="under_review")
-    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="loan_applications")
 
@@ -106,6 +121,6 @@ class InsuranceClaim(Base):
     parametric_data_source: Mapped[str | None] = mapped_column(String(60), nullable=True)
     auto_triggered: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="filed")
-    filed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    filed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="insurance_claims")
