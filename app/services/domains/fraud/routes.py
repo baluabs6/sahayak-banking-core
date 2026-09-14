@@ -105,3 +105,40 @@ class FraudController(APIController):
             target_user_ref=user_ref, details={"count": len(events)},
         )
         return json({"user_ref": user_ref, "events": events})
+
+    @post("/investigate/{user_ref}")
+    async def investigate(self, request: Request, user_ref: str) -> json:
+        """Investigator agent: given a flagged transaction (body: the dict
+        returned by /transactions/evaluate), queries velocity/history/profile
+        and RECOMMENDS an action for human confirmation — never executes one.
+        See app/services/domains/fraud/agent.py."""
+        from app.services.domains.fraud.agent import FraudInvestigatorAgent
+
+        payload = await request.json()
+        async with AsyncSessionLocal() as db:
+            user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            user = user_result.scalar_one_or_none()
+            if user is None:
+                return json({"error": "Unknown user_ref"}, status=404)
+
+            agent = FraudInvestigatorAgent(db)
+            result = await agent.investigate(user, payload)
+            return json(result)
+
+    @post("/case-file/{user_ref}")
+    async def case_file(self, request: Request, user_ref: str) -> json:
+        """SNS-triggered agent loop (lightweight): pre-drafts a case-file
+        summary from the same context tools, so a human reviewer starts from
+        a synthesis instead of raw logs."""
+        from app.services.domains.fraud.agent import FraudInvestigatorAgent
+
+        payload = await request.json()
+        async with AsyncSessionLocal() as db:
+            user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            user = user_result.scalar_one_or_none()
+            if user is None:
+                return json({"error": "Unknown user_ref"}, status=404)
+
+            agent = FraudInvestigatorAgent(db)
+            draft = await agent.draft_case_file(user, payload)
+            return json({"user_ref": user_ref, "case_file": draft})

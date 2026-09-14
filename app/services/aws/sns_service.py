@@ -11,15 +11,30 @@ from app.config import get_settings
 
 settings = get_settings()
 
+_client = None  # module-level singleton — see note in SNSService.__init__
 
-class SNSService:
-    def __init__(self) -> None:
-        self._client = boto3.client(
+
+def _get_client():
+    """Lazily builds and caches the boto3 SNS client at module scope.
+
+    SNSService (like FraudService/LendingService that own it) is
+    instantiated fresh on every request; building a new boto3 client each
+    time redoes credential/region resolution on every call for no benefit,
+    since the client itself is stateless and thread-safe to share."""
+    global _client
+    if _client is None:
+        _client = boto3.client(
             "sns",
             region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
+    return _client
+
+
+class SNSService:
+    def __init__(self) -> None:
+        self._client = _get_client()
 
     def publish_fraud_alert(self, user_id: str, txn_ref: str, reason: str, risk_score: float) -> str:
         message = {

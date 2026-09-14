@@ -7,6 +7,7 @@ crop insurance payouts.
 """
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.postgres_models import InsuranceClaim, User
@@ -34,6 +35,37 @@ class InsuranceService:
         )
         status = "paid" if auto_trigger else "under_review"
 
+        # Anomalous-claim check before any auto-payout goes out — a claim
+        # that would otherwise auto-trigger but looks anomalous against the
+        # user's recent claim history gets routed to manual/fraud review
+        # instead. Previously auto-triggered claims paid out unconditionally
+        # with no check against the user's other recent claims at all.
+        route_to_fraud_review = False
+        if auto_trigger:
+            history_result = await self.db.execute(
+                select(InsuranceClaim).where(InsuranceClaim.user_id == user.id).order_by(InsuranceClaim.filed_at.desc()).limit(10)
+            )
+            recent_claims = [
+                {
+                    "policy_type": c.policy_type,
+                    "claim_amount_inr": float(c.claim_amount_inr),
+                    "auto_triggered": c.auto_triggered,
+                    "status": c.status,
+                }
+                for c in history_result.scalars().all()
+            ]
+            from app.services.domains.insurance.agent import InsuranceClaimsAgent
+
+            try:
+                flag_result = await InsuranceClaimsAgent().flag_anomalous_claim(user.id, claim_data, recent_claims)
+                route_to_fraud_review = flag_result["route_to_fraud_review"]
+            except Exception:
+                route_to_fraud_review = False  # best-effort; never block a legitimate auto-payout on a check failure
+
+            if route_to_fraud_review:
+                status = "under_review"
+                auto_trigger = False
+
         claim = InsuranceClaim(
             id=str(uuid.uuid4()),
             claim_ref=f"CLM-{uuid.uuid4().hex[:8].upper()}",
@@ -49,4 +81,9 @@ class InsuranceService:
         self.db.add(claim)
         await self.db.commit()
 
-        return {"claim_ref": claim.claim_ref, "status": status, "auto_triggered": auto_trigger}
+        return {
+            "claim_ref": claim.claim_ref,
+            "status": status,
+            "auto_triggered": auto_trigger,
+            "routed_to_fraud_review": route_to_fraud_review,
+        }

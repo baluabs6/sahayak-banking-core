@@ -28,7 +28,11 @@ COLLECTION_KYC_DOCUMENTS = "kyc_documents"
 COLLECTION_FRAUD_EVENTS = "fraud_events"
 COLLECTION_RAG_QUERY_LOGS = "rag_query_logs"
 COLLECTION_DEVICE_FINGERPRINTS = "device_fingerprints"
+<<<<<<< HEAD
 COLLECTION_AUDIT_LOGS = "audit_logs"
+=======
+COLLECTION_AGENT_AUDIT_LOG = "agent_audit_log"  # full tool-call trace for every agent run — see app/services/ai/agent_orchestrator.py
+>>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
 
 
 async def ensure_indexes() -> None:
@@ -39,6 +43,11 @@ async def ensure_indexes() -> None:
     await db[COLLECTION_FRAUD_EVENTS].create_index("created_at")
     await db[COLLECTION_RAG_QUERY_LOGS].create_index("user_id")
     await db[COLLECTION_DEVICE_FINGERPRINTS].create_index("device_id", unique=True)
+<<<<<<< HEAD
     await db[COLLECTION_AUDIT_LOGS].create_index("target_user_ref")
     await db[COLLECTION_AUDIT_LOGS].create_index("actor_ref")
     await db[COLLECTION_AUDIT_LOGS].create_index("created_at")
+=======
+    await db[COLLECTION_AGENT_AUDIT_LOG].create_index("user_id")
+    await db[COLLECTION_AGENT_AUDIT_LOG].create_index("created_at")
+>>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf

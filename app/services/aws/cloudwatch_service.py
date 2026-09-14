@@ -9,15 +9,24 @@ from app.config import get_settings
 
 settings = get_settings()
 
+_client = None  # module-level singleton, see app/services/aws/sns_service.py::_get_client
 
-class CloudWatchService:
-    def __init__(self) -> None:
-        self._client = boto3.client(
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = boto3.client(
             "cloudwatch",
             region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
+    return _client
+
+
+class CloudWatchService:
+    def __init__(self) -> None:
+        self._client = _get_client()
 
     def put_metric(self, metric_name: str, value: float, unit: str = "Count", dimensions: dict | None = None) -> None:
         dims = [{"Name": k, "Value": str(v)} for k, v in (dimensions or {}).items()]

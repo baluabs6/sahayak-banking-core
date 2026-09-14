@@ -90,3 +90,44 @@ class InclusionController(APIController):
                     ],
                 }
             )
+
+    @post("/users/{user_ref}/coach")
+    async def coach(self, request: Request, user_ref: str) -> json:
+        """Credit-improvement coach: extends the one-off score explanation
+        into actionable coaching, using the signal breakdown stored with the
+        user's most recent score (or one passed in the request body under
+        'signal_breakdown', for a what-if scenario).
+        Body (optional): { "signal_breakdown": {...} }"""
+        from app.services.domains.inclusion.agent import InclusionCoachAgent
+        from app.models.postgres_models import CreditScore
+
+        payload = {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        async with AsyncSessionLocal() as db:
+            user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            user = user_result.scalar_one_or_none()
+            if user is None:
+                return json({"error": "Unknown user_ref"}, status=404)
+
+            latest_result = await db.execute(
+                select(CreditScore).where(CreditScore.user_id == user.id).order_by(CreditScore.computed_at.desc()).limit(1)
+            )
+            latest = latest_result.scalar_one_or_none()
+
+            signal_breakdown = payload.get("signal_breakdown") or (latest.signal_breakdown if latest else None)
+            if signal_breakdown is None:
+                return json(
+                    {"error": "No credit score on file for this user yet — compute one first via POST /credit-score"},
+                    status=400,
+                )
+
+            score = latest.score if latest else 0
+            band = latest.score_band if latest else "unknown"
+
+            agent = InclusionCoachAgent()
+            advice = await agent.coach(score, band, signal_breakdown)
+            return json({"user_ref": user_ref, "coaching": advice})

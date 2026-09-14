@@ -13,15 +13,24 @@ from app.config import get_settings
 
 settings = get_settings()
 
+_resource = None  # module-level singleton, see app/services/aws/sns_service.py::_get_client
 
-class DynamoDBService:
-    def __init__(self) -> None:
-        self._resource = boto3.resource(
+
+def _get_resource():
+    global _resource
+    if _resource is None:
+        _resource = boto3.resource(
             "dynamodb",
             region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
+    return _resource
+
+
+class DynamoDBService:
+    def __init__(self) -> None:
+        self._resource = _get_resource()
         self._sessions_table = self._resource.Table(settings.dynamodb_table_sessions)
         self._fraud_signals_table = self._resource.Table(settings.dynamodb_table_fraud_signals)
 
@@ -54,3 +63,13 @@ class DynamoDBService:
             ReturnValues="UPDATED_NEW",
         )
         return int(resp["Attributes"]["txn_count"])
+
+    def get_txn_velocity(self, user_id: str, window_key: str) -> int:
+        """Reads the current count for a velocity window. Previously nothing
+        in the codebase ever called this — increment_txn_velocity wrote a
+        counter every transaction that the fraud engine never consulted, so
+        rapid-fire transactions from the same user never actually tripped a
+        velocity rule. Returns 0 if the window doesn't exist yet."""
+        resp = self._fraud_signals_table.get_item(Key={"user_id": user_id, "window_key": window_key})
+        item = resp.get("Item")
+        return int(item["txn_count"]) if item else 0
