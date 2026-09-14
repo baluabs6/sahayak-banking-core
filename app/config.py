@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 60
+    jwt_refresh_expiry_days: int = 14
+    # Dev-only OTP accepted by verify_login_otp() when environment == "local".
+    # NEVER used outside local — see app/core/security.py::verify_login_otp.
+    dev_fallback_otp: str = "000000"
+    # Shared secret required to mint analyst/admin tokens via /auth/internal-token.
+    # Must be set via env/secrets manager in staging/production.
+    internal_admin_bootstrap_key: str | None = None
+    # Per-route request caps (requests/minute), enforced via Redis in each controller.
+    rate_limit_default_per_minute: int = 30
+    rate_limit_transactions_per_minute: int = 20
 
     # --- AI / LLM providers (provider-agnostic; pick at runtime) ---
     llm_provider: str = "anthropic"  # anthropic | openai | ollama | langchain_auto
@@ -53,6 +63,13 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-1.5-flash"
+    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    # --- Hybrid retrieval (dense + sparse) ---
+    use_hybrid_retrieval: bool = False
+    hybrid_dense_weight: float = 0.5  # sparse weight = 1 - this
 
     # --- RAG / vector store ---
     vector_store_backend: str = "faiss"  # faiss | pgvector
@@ -66,3 +83,42 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+class InsecureConfigurationError(RuntimeError):
+    """Raised at startup when staging/production is about to boot with
+    unsafe defaults (weak/default JWT secret, missing admin bootstrap key, etc.)."""
+
+
+def validate_production_config(settings: "Settings") -> None:
+    """Fail-closed startup guard. Call this from app.main's on_start hook.
+    Deliberately does nothing in `local` so dev setup stays frictionless."""
+    if settings.environment == "local":
+        return
+
+    from app.core.security import is_secret_strong_enough
+
+    problems: list[str] = []
+    if not is_secret_strong_enough(settings.jwt_secret):
+        problems.append(
+            "JWT_SECRET is missing, default, or too short (<32 chars) for a "
+            f"'{settings.environment}' environment."
+        )
+    if not settings.internal_admin_bootstrap_key or len(settings.internal_admin_bootstrap_key) < 24:
+        problems.append(
+            "INTERNAL_ADMIN_BOOTSTRAP_KEY is missing/too short - analyst/admin "
+            "token issuance would be unsafe."
+        )
+    if settings.dev_fallback_otp == "000000":
+        # Not a hard failure by itself (verify_login_otp already fails closed
+        # outside `local`), but flagged so it's never silently left at default.
+        problems.append(
+            "DEV_FALLBACK_OTP is still the default value - confirm it is unused "
+            "outside local (verify_login_otp() already blocks it, this is belt-and-braces)."
+        )
+
+    if problems:
+        raise InsecureConfigurationError(
+            f"Refusing to start in '{settings.environment}' with insecure configuration:\n- "
+            + "\n- ".join(problems)
+        )

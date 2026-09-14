@@ -4,11 +4,18 @@ Mounted at /api/v1/insurance in app/main.py.
 """
 from blacksheep import Request, json
 from blacksheep.server.controllers import APIController, post
+from pydantic import ValidationError
 from sqlalchemy import select
 
+from app.core.audit import log_audit_event
+from app.core.auth_middleware import ensure_owner_or_role, require_identity
 from app.db.postgres import AsyncSessionLocal
+from app.db.redis_client import check_rate_limit
 from app.models.postgres_models import User
+from app.services.domains.insurance.schemas import ClaimFileRequest
 from app.services.domains.insurance.service import InsuranceService
+
+_ANALYST_ROLES = ("analyst", "admin")
 
 
 class InsuranceController(APIController):
@@ -22,17 +29,34 @@ class InsuranceController(APIController):
         "trigger_event": "rainfall_deficit", "region": "Nashik, MH",
         "claim_amount_inr": 22000, "parametric_data_source": "IMD_rainfall_api",
         "index_value": 42.0, "index_threshold": 30.0 }"""
-        payload = await request.json()
-        user_ref = payload.get("user_ref")
-        if not user_ref:
-            return json({"error": "user_ref is required"}, status=400)
+        identity = require_identity(request)
+
+        raw = await request.json()
+        try:
+            body = ClaimFileRequest.model_validate(raw)
+        except ValidationError as e:
+            return json({"error": "Invalid request", "details": e.errors()}, status=400)
+
+        deny = ensure_owner_or_role(identity, body.user_ref, allowed_roles=_ANALYST_ROLES)
+        if deny:
+            return deny
+
+        allowed, _ = await check_rate_limit(identity["sub"], route="insurance_claim", limit=10, window_seconds=60)
+        if not allowed:
+            return json({"error": "Rate limit exceeded. Try again shortly."}, status=429)
 
         async with AsyncSessionLocal() as db:
-            user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            user_result = await db.execute(select(User).where(User.user_ref == body.user_ref))
             user = user_result.scalar_one_or_none()
             if user is None:
                 return json({"error": "Unknown user_ref"}, status=404)
 
             service = InsuranceService(db)
-            result = await service.file_claim(user, payload)
-            return json(result)
+            result = await service.file_claim(user, body.model_dump())
+
+        await log_audit_event(
+            action="claim.file", actor_ref=identity["sub"], actor_role=identity.get("role"),
+            target_user_ref=body.user_ref,
+            details={"claim_ref": result.get("claim_ref"), "status": result.get("status"), "auto_triggered": result.get("auto_triggered")},
+        )
+        return json(result)

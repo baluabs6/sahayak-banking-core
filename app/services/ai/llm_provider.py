@@ -91,6 +91,66 @@ class OllamaProvider(LLMProvider):
         return resp.json()["message"]["content"]
 
 
+class GeminiProvider(LLMProvider):
+    """Google Gemini via the google-generativeai SDK. Kept as a direct
+    provider (not only via LangChain) for cost/quota diversification —
+    useful as a fallback if Anthropic/OpenAI quota is exhausted."""
+    name = "gemini"
+
+    def __init__(self) -> None:
+        import google.generativeai as genai
+
+        genai.configure(api_key=settings.gemini_api_key)
+        self._model_name = settings.gemini_model
+        self._genai = genai
+
+    async def complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 800) -> str:
+        model = self._genai.GenerativeModel(self._model_name, system_instruction=system_prompt)
+        # google-generativeai's async client; generation_config caps output length.
+        response = await model.generate_content_async(
+            user_prompt,
+            generation_config={"max_output_tokens": max_tokens},
+        )
+        return response.text or ""
+
+
+class BedrockProvider(LLMProvider):
+    """AWS Bedrock — routes LLM calls through the same AWS account/VPC/IAM
+    boundary as S3/DynamoDB/SNS/CloudWatch, which matters for a banking
+    system's data-governance story (no data leaving AWS to a third-party
+    API for this call path). Supports any Bedrock-hosted model (Anthropic,
+    Meta Llama, Amazon Titan, Mistral) via `settings.bedrock_model_id`."""
+    name = "bedrock"
+
+    def __init__(self) -> None:
+        import boto3
+
+        self._client = boto3.client("bedrock-runtime", region_name=settings.aws_region)
+        self._model_id = settings.bedrock_model_id
+
+    async def complete(self, system_prompt: str, user_prompt: str, max_tokens: int = 800) -> str:
+        import asyncio
+        import json as _json
+
+        def _invoke() -> str:
+            # Anthropic-on-Bedrock message format; adjust the body shape if
+            # settings.bedrock_model_id points at a non-Anthropic model.
+            body = _json.dumps(
+                {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": max_tokens,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_prompt}],
+                }
+            )
+            resp = self._client.invoke_model(modelId=self._model_id, body=body)
+            payload = _json.loads(resp["body"].read())
+            return "".join(block.get("text", "") for block in payload.get("content", []))
+
+        # boto3 is sync; run off the event loop so it doesn't block other requests.
+        return await asyncio.to_thread(_invoke)
+
+
 class LangChainProvider(LLMProvider):
     """Provider-agnostic adapter using LangChain's chat-model abstraction.
     Lets you swap the underlying model (Anthropic/OpenAI/Ollama/others)
@@ -128,6 +188,8 @@ _PROVIDERS: dict[str, type[LLMProvider]] = {
     "anthropic": AnthropicProvider,
     "openai": OpenAIProvider,
     "ollama": OllamaProvider,
+    "gemini": GeminiProvider,
+    "bedrock": BedrockProvider,
     "langchain_auto": LangChainProvider,
 }
 

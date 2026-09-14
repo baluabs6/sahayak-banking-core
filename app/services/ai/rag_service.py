@@ -29,6 +29,8 @@ _RAG_SYSTEM_PROMPT = (
 class RAGService:
     def __init__(self) -> None:
         self._vector_store = None  # lazily built
+        self._bm25_retriever = None  # lazily built, only used when hybrid retrieval is enabled
+        self._documents: list[dict] = []
 
     def _get_embeddings(self):
         if settings.embedding_provider == "anthropic":
@@ -55,11 +57,34 @@ class RAGService:
 
         docs = [Document(page_content=d["text"], metadata={"id": d["id"], "source": d["source"]}) for d in documents]
         self._vector_store = FAISS.from_documents(docs, self._get_embeddings())
+        self._documents = documents
+
+        if settings.use_hybrid_retrieval:
+            # Sparse (keyword) retriever alongside the dense FAISS one.
+            # Matters for RBI-circular/scheme text, where exact terms (scheme
+            # names, section numbers) are often a better match signal than
+            # embedding similarity alone catches.
+            from langchain_community.retrievers import BM25Retriever
+
+            self._bm25_retriever = BM25Retriever.from_documents(docs)
 
     def _retrieve(self, query: str, k: int = 4) -> list[dict]:
         if self._vector_store is None:
             return []
-        results = self._vector_store.similarity_search(query, k=k)
+
+        if settings.use_hybrid_retrieval and self._bm25_retriever is not None:
+            from langchain.retrievers import EnsembleRetriever
+
+            self._bm25_retriever.k = k
+            dense_retriever = self._vector_store.as_retriever(search_kwargs={"k": k})
+            ensemble = EnsembleRetriever(
+                retrievers=[dense_retriever, self._bm25_retriever],
+                weights=[settings.hybrid_dense_weight, 1 - settings.hybrid_dense_weight],
+            )
+            results = ensemble.invoke(query)[:k]
+        else:
+            results = self._vector_store.similarity_search(query, k=k)
+
         return [{"id": r.metadata.get("id"), "source": r.metadata.get("source"), "text": r.page_content} for r in results]
 
     async def answer(self, query: str, provider_override: str | None = None) -> dict:

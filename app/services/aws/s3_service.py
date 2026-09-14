@@ -50,7 +50,12 @@ class S3Service:
         from datetime import datetime
 
         key = f"raw/{dataset_name}/dt={datetime.utcnow():%Y-%m-%d}/{dataset_name}.jsonl"
-        self._client.put_object(Bucket=settings.s3_bucket_data_lake, Key=key, Body=jsonl_bytes)
+        self._client.put_object(
+            Bucket=settings.s3_bucket_data_lake,
+            Key=key,
+            Body=jsonl_bytes,
+            ServerSideEncryption="aws:kms",  # was previously unencrypted, unlike the KYC upload path
+        )
         return key
 
     def object_exists(self, bucket: str, key: str) -> bool:

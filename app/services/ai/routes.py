@@ -5,10 +5,14 @@ Lets the caller pick any of the 4 supported LLM backends per-request.
 """
 from blacksheep import Request, json
 from blacksheep.server.controllers import APIController, post
+from pydantic import ValidationError
 
 from app.config import get_settings
+from app.core.audit import log_audit_event
+from app.core.auth_middleware import require_identity
 from app.db.redis_client import check_rate_limit
 from app.services.ai.rag_service import RAGService
+from app.services.ai.schemas import AssistantAskRequest
 
 _rag_service = RAGService()
 settings = get_settings()
@@ -54,16 +58,23 @@ class AssistantController(APIController):
     @post("/ask")
     async def ask(self, request: Request) -> json:
         """Body: { "query": "...", "llm_provider": "anthropic|openai|ollama|langchain_auto" (optional) }"""
-        payload = await request.json()
-        query = payload.get("query")
-        if not query:
-            return json({"error": "query is required"}, status=400)
+        # Authenticated (any valid role) — this is a general Q&A surface, not
+        # tied to one user's financial records, so no ownership check beyond
+        # "you have a valid token" is required here.
+        auth_identity = require_identity(request)
 
-        # Rate-limit per caller (identified by user_ref if provided, else client IP)
-        # to cap paid-LLM spend and abuse — Redis-backed fixed window.
-        identity = payload.get("user_ref") or (request.client_ip or "anonymous")
+        raw = await request.json()
+        try:
+            body = AssistantAskRequest.model_validate(raw)
+        except ValidationError as e:
+            return json({"error": "Invalid request", "details": e.errors()}, status=400)
+
+        # Rate-limit per caller (token identity takes precedence over a
+        # client-supplied user_ref, which could previously be spoofed to
+        # dodge the limiter entirely).
+        rate_limit_identity = auth_identity.get("sub") or body.user_ref or (request.client_ip or "anonymous")
         allowed, current_count = await check_rate_limit(
-            identity, route="assistant_ask", limit=settings.rate_limit_assistant_per_minute, window_seconds=60
+            rate_limit_identity, route="assistant_ask", limit=settings.rate_limit_assistant_per_minute, window_seconds=60
         )
         if not allowed:
             return json(
@@ -71,5 +82,10 @@ class AssistantController(APIController):
                 status=429,
             )
 
-        result = await _rag_service.answer(query, provider_override=payload.get("llm_provider"))
+        result = await _rag_service.answer(body.query, provider_override=body.llm_provider)
+
+        await log_audit_event(
+            action="assistant.ask", actor_ref=auth_identity.get("sub"), actor_role=auth_identity.get("role"),
+            target_user_ref=body.user_ref, details={"llm_provider": result.get("llm_provider"), "cache_hit": result.get("cache_hit")},
+        )
         return json(result)

@@ -28,6 +28,7 @@ COLLECTION_KYC_DOCUMENTS = "kyc_documents"
 COLLECTION_FRAUD_EVENTS = "fraud_events"
 COLLECTION_RAG_QUERY_LOGS = "rag_query_logs"
 COLLECTION_DEVICE_FINGERPRINTS = "device_fingerprints"
+COLLECTION_AUDIT_LOGS = "audit_logs"
 
 
 async def ensure_indexes() -> None:
@@ -38,3 +39,6 @@ async def ensure_indexes() -> None:
     await db[COLLECTION_FRAUD_EVENTS].create_index("created_at")
     await db[COLLECTION_RAG_QUERY_LOGS].create_index("user_id")
     await db[COLLECTION_DEVICE_FINGERPRINTS].create_index("device_id", unique=True)
+    await db[COLLECTION_AUDIT_LOGS].create_index("target_user_ref")
+    await db[COLLECTION_AUDIT_LOGS].create_index("actor_ref")
+    await db[COLLECTION_AUDIT_LOGS].create_index("created_at")
