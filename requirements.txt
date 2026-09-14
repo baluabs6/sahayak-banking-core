@@ -10,6 +10,7 @@ pydantic-settings==2.5.2
 sqlalchemy[asyncio]==2.0.35
 asyncpg==0.29.0
 alembic==1.13.2
+psycopg2-binary==2.9.9    # sync driver Alembic uses for migrations only (app itself stays on asyncpg)
 
 # --- MongoDB ---
 motor==3.6.0

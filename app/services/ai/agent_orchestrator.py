@@ -174,6 +174,14 @@ async def log_agent_run(agent_name: str, user_id: str, result: AgentRunResult, e
                 "turns_used": result.turns_used,
                 "extra": extra or {},
                 "created_at": datetime.now(timezone.utc),
+                # Closes the loop on the propose-then-confirm pattern: a run
+                # that proposes an action starts unconfirmed, and a human
+                # reviewer flips this via POST /api/v1/admin/agent-actions/{id}/confirm
+                # (see app/services/domains/admin/routes.py). Previously this
+                # was logged but nothing ever read it back for review.
+                "confirmed": False if result.requires_confirmation else None,
+                "confirmed_by": None,
+                "confirmed_at": None,
             }
         )
     except Exception:

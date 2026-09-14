@@ -24,6 +24,8 @@ from app.services.domains.fraud.routes import FraudController  # noqa: F401
 from app.services.domains.inclusion.routes import InclusionController  # noqa: F401
 from app.services.domains.lending.routes import LendingController  # noqa: F401
 from app.services.domains.insurance.routes import InsuranceController  # noqa: F401
+from app.services.domains.collections.routes import CollectionsController  # noqa: F401
+from app.services.domains.admin.routes import AdminController  # noqa: F401
 from app.services.ai.routes import AssistantController  # noqa: F401
 
 settings = get_settings()
@@ -87,6 +89,6 @@ async def health_check():
 async def root():
     return {
         "service": settings.app_name,
-        "domains": ["auth", "inclusion", "fraud", "lending", "insurance", "assistant"],
+        "domains": ["auth", "inclusion", "fraud", "lending", "insurance", "collections", "admin", "assistant"],
         "docs": "/openapi",  # BlackSheep auto-generates OpenAPI at this path by default
     }

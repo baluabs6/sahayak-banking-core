@@ -85,9 +85,57 @@ class InclusionController(APIController):
                 {
                     "user_ref": user_ref,
                     "scores": [
-                        {"score": s.score, "band": s.score_band, "computed_at": s.computed_at.isoformat(), "explanation": s.explanation}
+                        {
+                            "score": s.score,
+                            "band": s.score_band,
+                            "computed_at": s.computed_at.isoformat(),
+                            "explanation": s.explanation,
+                            # Previously omitted here even though it's persisted —
+                            # callers had to re-fetch via /coach or recompute to
+                            # see which individual signals drove the score.
+                            "signal_breakdown": s.signal_breakdown,
+                        }
                         for s in scores
                     ],
+                }
+            )
+
+    @get("/users/{user_ref}/scores/latest/explain")
+    async def explain_latest_score(self, request: Request, user_ref: str) -> json:
+        """Dedicated explainability endpoint: the most recent score's
+        per-factor breakdown plus its plain-language explanation, without
+        the caller having to pull the full score history. Built for
+        fair-lending / dispute-resolution requests, where a customer or
+        regulator asks "why this score" for the score currently in effect."""
+        from app.models.postgres_models import CreditScore
+
+        identity = require_identity(request)
+        deny = ensure_owner_or_role(identity, user_ref, allowed_roles=_ANALYST_ROLES)
+        if deny:
+            return deny
+
+        async with AsyncSessionLocal() as db:
+            user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            user = user_result.scalar_one_or_none()
+            if user is None:
+                return json({"error": "Unknown user_ref"}, status=404)
+
+            latest_result = await db.execute(
+                select(CreditScore).where(CreditScore.user_id == user.id).order_by(CreditScore.computed_at.desc()).limit(1)
+            )
+            latest = latest_result.scalar_one_or_none()
+            if latest is None:
+                return json({"error": "No credit score on file for this user yet"}, status=404)
+
+            return json(
+                {
+                    "user_ref": user_ref,
+                    "score": latest.score,
+                    "band": latest.score_band,
+                    "model_version": latest.model_version,
+                    "computed_at": latest.computed_at.isoformat(),
+                    "explanation": latest.explanation,
+                    "signal_breakdown": latest.signal_breakdown,
                 }
             )
 

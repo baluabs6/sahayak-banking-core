@@ -6,15 +6,18 @@ combines the inclusion domain's credit score with loan-specific factors
 approve/review/reject decision. Notifies via SNS on status change.
 """
 import uuid
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.postgres_models import LoanApplication, User
+from app.models.postgres_models import LoanApplication, LoanRepayment, User
 from app.services.aws.sns_service import SNSService
 from app.services.aws.cloudwatch_service import CloudWatchService
 
 _AUTO_APPROVE_SCORE_THRESHOLD = 700
 _AUTO_REJECT_SCORE_THRESHOLD = 450
+_DEFAULT_REPAYMENT_TENURE_MONTHS = 6  # scaffold: fixed tenure; production would read tenure from the offer terms
 
 
 class LendingService:
@@ -76,6 +79,12 @@ class LendingService:
         self.db.add(application)
         await self.db.commit()
 
+        if decision == "approved":
+            # Generate the EMI schedule immediately on approval so the
+            # collections domain has something to monitor from day one,
+            # instead of a loan sitting "approved" with no repayment record.
+            await self.generate_repayment_schedule(application)
+
         try:
             self.sns.publish_loan_status_update(user.id, application.application_ref, decision)
             self.cloudwatch.record_loan_decision(decision)
@@ -102,3 +111,86 @@ class LendingService:
             "used_credit_score": latest_credit_score,
             "rationale": rationale,
         }
+
+    async def generate_repayment_schedule(
+        self, application: LoanApplication, tenure_months: int = _DEFAULT_REPAYMENT_TENURE_MONTHS
+    ) -> list[LoanRepayment]:
+        """Equal-installment EMI schedule (principal only, no interest math —
+        a real underwriting engine would price interest into amount_due_inr;
+        this scaffold keeps the schedule auditable and simple). Idempotent:
+        if a schedule already exists for this application, returns it
+        unchanged rather than double-scheduling."""
+        existing = await self.db.execute(
+            select(LoanRepayment).where(LoanRepayment.loan_application_id == application.id)
+        )
+        rows = existing.scalars().all()
+        if rows:
+            return list(rows)
+
+        installment_amount = round(float(application.requested_amount_inr) / tenure_months, 2)
+        now = datetime.now(timezone.utc)
+        schedule: list[LoanRepayment] = []
+        for i in range(1, tenure_months + 1):
+            schedule.append(
+                LoanRepayment(
+                    id=str(uuid.uuid4()),
+                    repayment_ref=f"RPY-{uuid.uuid4().hex[:8].upper()}",
+                    loan_application_id=application.id,
+                    installment_number=i,
+                    amount_due_inr=installment_amount,
+                    due_date=now + timedelta(days=30 * i),
+                    status="pending",
+                )
+            )
+        self.db.add_all(schedule)
+        await self.db.commit()
+        return schedule
+
+    async def record_repayment(self, application: LoanApplication, installment_number: int, amount_paid_inr: float) -> dict:
+        """Marks a specific installment paid. A real payments integration
+        would call this from a webhook (UPI/NACH mandate settlement); here
+        it's exposed directly so an analyst/customer can record a payment."""
+        result = await self.db.execute(
+            select(LoanRepayment).where(
+                LoanRepayment.loan_application_id == application.id,
+                LoanRepayment.installment_number == installment_number,
+            )
+        )
+        repayment = result.scalar_one_or_none()
+        if repayment is None:
+            return {"error": "No repayment schedule entry found for that installment_number"}
+
+        now = datetime.now(timezone.utc)
+        repayment.amount_paid_inr = amount_paid_inr
+        repayment.paid_at = now
+        repayment.status = "paid_late" if now > repayment.due_date else "paid"
+        await self.db.commit()
+
+        return {
+            "repayment_ref": repayment.repayment_ref,
+            "installment_number": repayment.installment_number,
+            "status": repayment.status,
+            "amount_paid_inr": float(repayment.amount_paid_inr),
+            "due_date": repayment.due_date.isoformat(),
+            "paid_at": repayment.paid_at.isoformat(),
+        }
+
+    async def list_repayments(self, application: LoanApplication) -> list[dict]:
+        result = await self.db.execute(
+            select(LoanRepayment)
+            .where(LoanRepayment.loan_application_id == application.id)
+            .order_by(LoanRepayment.installment_number)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "repayment_ref": r.repayment_ref,
+                "installment_number": r.installment_number,
+                "amount_due_inr": float(r.amount_due_inr),
+                "due_date": r.due_date.isoformat(),
+                "amount_paid_inr": float(r.amount_paid_inr) if r.amount_paid_inr is not None else None,
+                "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+                "status": r.status,
+            }
+            for r in rows
+        ]

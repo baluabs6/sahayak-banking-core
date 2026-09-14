@@ -65,3 +65,22 @@ class SNSService:
             Subject=f"Loan application {application_ref} update",
         )
         return resp["MessageId"]
+
+    def publish_repayment_nudge(self, user_id: str, application_ref: str, risk_level: str, reason: str) -> str:
+        """Proactive nudge for a borrower whose repayment risk has crossed a
+        threshold (upcoming/missed EMI) — sent before a loan actually goes
+        into default, not as a post-default recovery notice."""
+        message = {
+            "type": "REPAYMENT_RISK_NUDGE",
+            "user_id": user_id,
+            "application_ref": application_ref,
+            "risk_level": risk_level,
+            "reason": reason,
+        }
+        resp = self._client.publish(
+            TopicArn=settings.sns_topic_collections_nudges,
+            Message=json.dumps(message),
+            Subject=f"Upcoming repayment reminder — {application_ref}",
+            MessageAttributes={"event_type": {"DataType": "String", "StringValue": "repayment_nudge"}},
+        )
+        return resp["MessageId"]

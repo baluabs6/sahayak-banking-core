@@ -3,7 +3,7 @@ Insurance domain routes — BlackSheep Router.
 Mounted at /api/v1/insurance in app/main.py.
 """
 from blacksheep import Request, json
-from blacksheep.server.controllers import APIController, post
+from blacksheep.server.controllers import APIController, get, post
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -60,6 +60,51 @@ class InsuranceController(APIController):
             details={"claim_ref": result.get("claim_ref"), "status": result.get("status"), "auto_triggered": result.get("auto_triggered")},
         )
         return json(result)
+
+    @get("/claims")
+    async def list_claims(self, request: Request) -> json:
+        """Claim history for a user. Query param: ?user_ref=USR-1001
+        Owner or analyst/admin only."""
+        from app.models.postgres_models import InsuranceClaim
+
+        identity = require_identity(request)
+        user_ref = request.query.get("user_ref")
+        user_ref = user_ref[0] if isinstance(user_ref, list) else user_ref
+        if not user_ref:
+            return json({"error": "Missing required query param 'user_ref'"}, status=400)
+
+        deny = ensure_owner_or_role(identity, user_ref, allowed_roles=_ANALYST_ROLES)
+        if deny:
+            return deny
+
+        async with AsyncSessionLocal() as db:
+            user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            user = user_result.scalar_one_or_none()
+            if user is None:
+                return json({"error": "Unknown user_ref"}, status=404)
+
+            claims_result = await db.execute(
+                select(InsuranceClaim).where(InsuranceClaim.user_id == user.id).order_by(InsuranceClaim.filed_at.desc())
+            )
+            claims = claims_result.scalars().all()
+            return json(
+                {
+                    "user_ref": user_ref,
+                    "claims": [
+                        {
+                            "claim_ref": c.claim_ref,
+                            "policy_type": c.policy_type,
+                            "trigger_event": c.trigger_event,
+                            "region": c.region,
+                            "claim_amount_inr": float(c.claim_amount_inr),
+                            "auto_triggered": c.auto_triggered,
+                            "status": c.status,
+                            "filed_at": c.filed_at.isoformat(),
+                        }
+                        for c in claims
+                    ],
+                }
+            )
 
     @post("/claims/{claim_ref}/triage")
     async def triage_claim(self, claim_ref: str) -> json:

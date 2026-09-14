@@ -11,3 +11,12 @@ class LoanApplicationRequest(BaseModel):
     gst_data_available: bool = False
     bank_statement_months_provided: int = Field(0, ge=0, le=600)
     explain: bool = False  # opt-in: generates an RBI-style plain-language rationale
+
+
+class RepaymentRecordRequest(BaseModel):
+    """Marks an installment as paid (full or partial). installment_number
+    identifies which EMI in the schedule this payment applies to; the
+    schedule itself is created by LendingService.generate_repayment_schedule
+    once a loan moves to 'approved'."""
+    amount_paid_inr: float = Field(..., gt=0, le=100_000_000)
+    installment_number: int = Field(..., ge=1)

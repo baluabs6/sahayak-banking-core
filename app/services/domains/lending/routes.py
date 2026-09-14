@@ -3,7 +3,7 @@ Lending domain routes — BlackSheep Router.
 Mounted at /api/v1/lending in app/main.py.
 """
 from blacksheep import Request, json
-from blacksheep.server.controllers import APIController, post
+from blacksheep.server.controllers import APIController, get, post
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -12,7 +12,7 @@ from app.core.auth_middleware import ensure_owner_or_role, require_identity
 from app.db.postgres import AsyncSessionLocal
 from app.db.redis_client import check_rate_limit
 from app.models.postgres_models import CreditScore, LoanApplication, User
-from app.services.domains.lending.schemas import LoanApplicationRequest
+from app.services.domains.lending.schemas import LoanApplicationRequest, RepaymentRecordRequest
 from app.services.domains.lending.service import LendingService
 
 _ANALYST_ROLES = ("analyst", "admin")
@@ -128,3 +128,66 @@ class LendingController(APIController):
             }
             draft = await agent.draft_document_request(user, application_dict)
             return json({"application_ref": application_ref, "draft_message": draft})
+
+    @post("/applications/{application_ref}/repayments")
+    async def record_repayment(self, request: Request, application_ref: str) -> json:
+        """Records a repayment against an installment. Body:
+        { "installment_number": 1, "amount_paid_inr": 50000 }
+        Owner (the borrower) or an analyst/admin may record a payment."""
+        identity = require_identity(request)
+
+        raw = await request.json()
+        try:
+            body = RepaymentRecordRequest.model_validate(raw)
+        except ValidationError as e:
+            return json({"error": "Invalid request", "details": e.errors()}, status=400)
+
+        async with AsyncSessionLocal() as db:
+            app_result = await db.execute(select(LoanApplication).where(LoanApplication.application_ref == application_ref))
+            application = app_result.scalar_one_or_none()
+            if application is None:
+                return json({"error": "Unknown application_ref"}, status=404)
+
+            user_result = await db.execute(select(User).where(User.id == application.user_id))
+            user = user_result.scalar_one()
+
+            deny = ensure_owner_or_role(identity, user.user_ref, allowed_roles=_ANALYST_ROLES)
+            if deny:
+                return deny
+
+            if application.status != "approved":
+                return json({"error": f"Application status is '{application.status}' — repayments only apply to approved loans"}, status=400)
+
+            service = LendingService(db)
+            result = await service.record_repayment(application, body.installment_number, body.amount_paid_inr)
+            if "error" in result:
+                return json(result, status=404)
+
+        await log_audit_event(
+            action="loan.repayment_recorded", actor_ref=identity["sub"], actor_role=identity.get("role"),
+            target_user_ref=user.user_ref,
+            details={"application_ref": application_ref, **result},
+        )
+        return json({"application_ref": application_ref, **result})
+
+    @get("/applications/{application_ref}/repayments")
+    async def list_repayments(self, request: Request, application_ref: str) -> json:
+        """Returns the full EMI schedule and payment status for a loan."""
+        identity = require_identity(request)
+
+        async with AsyncSessionLocal() as db:
+            app_result = await db.execute(select(LoanApplication).where(LoanApplication.application_ref == application_ref))
+            application = app_result.scalar_one_or_none()
+            if application is None:
+                return json({"error": "Unknown application_ref"}, status=404)
+
+            user_result = await db.execute(select(User).where(User.id == application.user_id))
+            user = user_result.scalar_one()
+
+            deny = ensure_owner_or_role(identity, user.user_ref, allowed_roles=_ANALYST_ROLES)
+            if deny:
+                return deny
+
+            service = LendingService(db)
+            repayments = await service.list_repayments(application)
+            return json({"application_ref": application_ref, "repayments": repayments})

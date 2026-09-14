@@ -106,6 +106,7 @@ class LoanApplication(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="loan_applications")
+    repayments: Mapped[list["LoanRepayment"]] = relationship(viewonly=True)
 
 
 class InsuranceClaim(Base):
@@ -124,3 +125,29 @@ class InsuranceClaim(Base):
     filed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="insurance_claims")
+
+
+class LoanRepayment(Base):
+    """Post-approval EMI schedule + repayment tracking.
+
+    Previously the app modeled loan origination/decision (LoanApplication)
+    but nothing after approval — there was no way to know if a borrower
+    was actually repaying, which is exactly the signal the collections
+    domain (app/services/domains/collections) needs for real-time
+    repayment-risk nudging.
+    """
+    __tablename__ = "loan_repayments"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    repayment_ref: Mapped[str] = mapped_column(String(20), unique=True)
+    loan_application_id: Mapped[str] = mapped_column(ForeignKey("loan_applications.id"))
+    installment_number: Mapped[int] = mapped_column()
+    amount_due_inr: Mapped[float] = mapped_column(Numeric(12, 2))
+    due_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    amount_paid_inr: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # pending | paid | missed | paid_late
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    loan_application: Mapped["LoanApplication"] = relationship()

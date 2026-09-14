@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     dynamodb_table_fraud_signals: str = "sahayak-fraud-signals"
     sns_topic_fraud_alerts: str = "arn:aws:sns:ap-south-1:000000000000:fraud-alerts"
     sns_topic_loan_notifications: str = "arn:aws:sns:ap-south-1:000000000000:loan-notifications"
+    sns_topic_collections_nudges: str = "arn:aws:sns:ap-south-1:000000000000:collections-nudges"
     cloudwatch_namespace: str = "SahayakBankingCore/Backend"
 
     # --- Auth ---

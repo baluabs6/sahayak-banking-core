@@ -45,3 +45,5 @@ async def ensure_indexes() -> None:
     await db[COLLECTION_AUDIT_LOGS].create_index("created_at")
     await db[COLLECTION_AGENT_AUDIT_LOG].create_index("user_id")
     await db[COLLECTION_AGENT_AUDIT_LOG].create_index("created_at")
+    # Powers GET /api/v1/admin/agent-actions/pending — filters on confirmed == False
+    await db[COLLECTION_AGENT_AUDIT_LOG].create_index("confirmed")

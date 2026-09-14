@@ -33,6 +33,56 @@ common security/auth boundary.
 
 ---
 
+## What's new
+
+Added on top of the original four-domain core, following the same
+domain-module pattern (`routes.py` + `schemas.py` + `service.py`,
+JWT auth, ownership checks, rate limiting, audit logging):
+
+- **Loan repayment tracking** — approved loans now get an EMI schedule
+  generated automatically (`LoanRepayment` model), with
+  `POST /api/v1/lending/applications/{ref}/repayments` to record a
+  payment and `GET .../repayments` to view the schedule. Previously the
+  app modeled loan origination but nothing after approval.
+- **New `collections` domain — real-time repayment-risk nudging.**
+  `POST /api/v1/collections/loans/{ref}/assess` scores a loan's risk
+  (overdue/upcoming installments + credit-score trend) using the same
+  transparent, rule-based approach as fraud/lending, and can trigger a
+  proactive SNS nudge before a loan goes into default rather than after.
+  `GET /api/v1/collections/at-risk` gives a portfolio-wide view for
+  analysts. See [Real-time issues considered](#real-time-issues-considered--roadmap) below.
+- **Credit score explainability endpoint** —
+  `GET /api/v1/inclusion/users/{ref}/scores/latest/explain` returns the
+  per-factor signal breakdown behind the current score. The existing
+  score-history endpoint was also fixed to actually return
+  `signal_breakdown`, which it computed but never included in the response.
+- **Insurance claim history** —
+  `GET /api/v1/insurance/claims?user_ref=...` lists a customer's past
+  claims; previously claims could only be filed, not listed.
+- **New `admin` domain — ops/analyst tooling:**
+  - `GET /api/v1/admin/dashboard` — aggregate counts (flagged
+    transactions, pending loan reviews, claims in queue, agent actions
+    awaiting confirmation) in one call.
+  - `GET /api/v1/admin/agent-actions/pending` +
+    `POST /api/v1/admin/agent-actions/{id}/confirm` — closes the loop on
+    the propose-then-confirm pattern described below: every agent run
+    that proposes a consequential action was already logged, but nothing
+    previously read that queue back or recorded a reviewer's decision.
+  - `GET /api/v1/admin/audit-log?user_ref=...&action=...` — a queryable
+    view over the audit log that was being written on every
+    security/finance-relevant action but had no read path.
+- **Alembic migrations** — `alembic.ini` + `migrations/`, wired to the
+  app's own `Settings`/`Base` rather than a hardcoded URL, with a
+  baseline migration covering all six tables. The app previously only
+  had `Base.metadata.create_all()` for local dev, with no migration
+  history and no safe path to a schema change in staging/production.
+- **Test coverage** — `tests/` had zero tests before this; added unit
+  tests for the fraud rule engine, the lending approve/review/reject
+  decision logic, the IDOR/ownership authorization check, and the new
+  request schemas (21 tests, all passing, no live DB required).
+
+---
+
 ## Application Architecture
 
 ### High-level shape
@@ -84,6 +134,14 @@ common security/auth boundary.
                                                                                 │ LangChain-auto│
                                                                                 └───────────────┘
 ```
+
+> The diagram above shows the original four domains. Two more controllers
+> now sit alongside them at the same layer: **`/api/v1/collections`**
+> (repayment-risk nudging — reads `LendingService`'s repayment data and
+> `InclusionService`'s credit-score history) and **`/api/v1/admin`**
+> (dashboard, pending agent-action confirmation, audit-log query —
+> analyst/admin only, reads across all domains' Postgres/Mongo data
+> without owning any of its own). See "What's new" above.
 
 ## Stack
 
@@ -317,3 +375,55 @@ plus two related security/correctness bugs. All are now fixed:
   removed them entirely. All three are preserved, alongside the
   request-validation, rate-limiting, and audit-logging that existed on
   the other side of the same conflicts.
+
+---
+
+## Real-time issues considered — roadmap
+
+A wider list of real-time banking problems was scoped alongside the
+features above. Some were built (see "What's new"); the rest are listed
+here honestly as **not yet implemented**, with why they're harder than a
+single domain-module addition:
+
+**Built:**
+- Real-time collections / repayment-risk nudging — `collections` domain, above.
+- Dynamic loan-repayment visibility (schedule + payment tracking) — lending domain, above.
+- Dispute/audit-trail visibility for analysts — `admin` domain's audit-log query, above.
+
+**Not yet built — needs a new domain module, no new infrastructure:**
+- **Real-time liquidity/cash-flow forecasting for MSMEs** — predicting a
+  cash crunch 7–14 days out from UPI/GST inflow trends. Would reuse the
+  inclusion domain's alt-data signals but needs a trend/forecast function
+  rather than a point-in-time score.
+- **Real-time KYC/re-KYC drift detection** — flagging when a customer's
+  declared occupation/income no longer matches transaction behavior.
+  Needs a `declared_profile` field on `User` and a periodic comparison
+  job rather than a request-time check.
+- **Nano/micro-insurance triggered by transaction context** — e.g.
+  auto-offering trip insurance when a large travel booking is detected.
+  Straightforward extension of the insurance domain; not yet built.
+- **Dynamic interest-rate/credit-limit repricing** — continuously
+  re-evaluating a borrower's limit instead of only at loan origination.
+
+**Not yet built — needs new infrastructure or external integration:**
+- **AML/transaction-monitoring (structuring, layering, mule-account
+  networks)** — qualitatively different from the existing per-transaction
+  fraud engine; needs graph analysis across accounts over time (a graph
+  DB or a batch job building a graph in Postgres/Mongo), not a single
+  request-time rule.
+- **UPI outage / payment-rail failover routing** — this is
+  infrastructure-layer (health checks + routing against a real NPCI/UPI
+  switch), not an application domain; the current app only stubs
+  payment-rail integration.
+- **Regional-language RAG support** — claimed as a differentiator in the
+  FAQ above but not verified as implemented in `rag_service.py` /
+  `assistant_agent.py`; worth auditing before relying on it.
+- **RAG knowledge-base ingestion pipeline** — the assistant currently
+  answers from three hardcoded sample entries in `ai/routes.py`; a real
+  ingestion job for RBI circulars/scheme docs would replace that.
+
+If you want any of these built next, the "needs a new domain module, no
+new infrastructure" group is the fastest path — each follows the same
+`routes.py`/`schemas.py`/`service.py` pattern used by `collections` and
+`admin` above.
+
