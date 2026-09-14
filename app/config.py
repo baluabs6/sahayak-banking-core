@@ -101,8 +101,18 @@ _PLACEHOLDER_JWT_SECRET = "****************************"
 
 @lru_cache
 def get_settings() -> Settings:
-<<<<<<< HEAD
-    return Settings()
+    settings = Settings()
+    # Fail fast rather than silently signing tokens with a known placeholder
+    # secret outside local dev — this used to default to the literal string
+    # "change-me-in-production" with nothing enforcing that anyone actually
+    # changed it. This is a first, immediate check; validate_production_config()
+    # below runs the fuller set of checks from app.main's on_start hook.
+    if settings.environment != "local" and settings.jwt_secret == _PLACEHOLDER_JWT_SECRET:
+        raise RuntimeError(
+            "JWT_SECRET is still the placeholder value. Set a real secret via "
+            "env var / Secrets Manager before running outside `environment=local`."
+        )
+    return settings
 
 
 class InsecureConfigurationError(RuntimeError):
@@ -142,16 +152,3 @@ def validate_production_config(settings: "Settings") -> None:
             f"Refusing to start in '{settings.environment}' with insecure configuration:\n- "
             + "\n- ".join(problems)
         )
-=======
-    settings = Settings()
-    # Fail fast rather than silently signing tokens with a known placeholder
-    # secret outside local dev — this used to default to the literal string
-    # "change-me-in-production" with nothing enforcing that anyone actually
-    # changed it.
-    if settings.environment != "local" and settings.jwt_secret == _PLACEHOLDER_JWT_SECRET:
-        raise RuntimeError(
-            "JWT_SECRET is still the placeholder value. Set a real secret via "
-            "env var / Secrets Manager before running outside `environment=local`."
-        )
-    return settings
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf

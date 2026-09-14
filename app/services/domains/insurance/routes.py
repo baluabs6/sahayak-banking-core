@@ -52,7 +52,6 @@ class InsuranceController(APIController):
                 return json({"error": "Unknown user_ref"}, status=404)
 
             service = InsuranceService(db)
-<<<<<<< HEAD
             result = await service.file_claim(user, body.model_dump())
 
         await log_audit_event(
@@ -61,9 +60,6 @@ class InsuranceController(APIController):
             details={"claim_ref": result.get("claim_ref"), "status": result.get("status"), "auto_triggered": result.get("auto_triggered")},
         )
         return json(result)
-=======
-            result = await service.file_claim(user, payload)
-            return json(result)
 
     @post("/claims/{claim_ref}/triage")
     async def triage_claim(self, claim_ref: str) -> json:
@@ -101,4 +97,3 @@ class InsuranceController(APIController):
             agent = InsuranceClaimsAgent()
             result = await agent.triage_claim(claim.user_id, claim_dict, kyc_documents=kyc_docs)
             return json({"claim_ref": claim_ref, **result})
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf

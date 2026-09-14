@@ -58,18 +58,16 @@ class S3Service:
         partitioned by dataset name — ready for Glue/Athena/Snowflake ingestion."""
         from datetime import datetime, timezone
 
-<<<<<<< HEAD
-        key = f"raw/{dataset_name}/dt={datetime.utcnow():%Y-%m-%d}/{dataset_name}.jsonl"
+        # KMS-encrypted like the KYC upload path (a prior version of this
+        # export was unencrypted-at-rest — closed here), and uses a
+        # timezone-aware timestamp rather than the deprecated utcnow().
+        key = f"raw/{dataset_name}/dt={datetime.now(timezone.utc):%Y-%m-%d}/{dataset_name}.jsonl"
         self._client.put_object(
             Bucket=settings.s3_bucket_data_lake,
             Key=key,
             Body=jsonl_bytes,
-            ServerSideEncryption="aws:kms",  # was previously unencrypted, unlike the KYC upload path
+            ServerSideEncryption="aws:kms",
         )
-=======
-        key = f"raw/{dataset_name}/dt={datetime.now(timezone.utc):%Y-%m-%d}/{dataset_name}.jsonl"
-        self._client.put_object(Bucket=settings.s3_bucket_data_lake, Key=key, Body=jsonl_bytes)
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
         return key
 
     def object_exists(self, bucket: str, key: str) -> bool:

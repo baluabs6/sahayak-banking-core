@@ -5,18 +5,13 @@ Lets the caller pick any of the 4 supported LLM backends per-request.
 """
 from blacksheep import Request, json
 from blacksheep.server.controllers import APIController, post
-<<<<<<< HEAD
 from pydantic import ValidationError
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.core.audit import log_audit_event
 from app.core.auth_middleware import require_identity
-=======
-from sqlalchemy import select
-
-from app.config import get_settings
 from app.db.postgres import AsyncSessionLocal
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
 from app.db.redis_client import check_rate_limit
 from app.models.postgres_models import User
 from app.services.ai.rag_service import RAGService
@@ -65,22 +60,16 @@ class AssistantController(APIController):
 
     @post("/ask")
     async def ask(self, request: Request) -> json:
-<<<<<<< HEAD
-        """Body: { "query": "...", "llm_provider": "anthropic|openai|ollama|langchain_auto" (optional) }"""
-        # Authenticated (any valid role) — this is a general Q&A surface, not
-        # tied to one user's financial records, so no ownership check beyond
-        # "you have a valid token" is required here.
-        auth_identity = require_identity(request)
-=======
         """Body: { "query": "...", "llm_provider": "anthropic|openai|ollama|langchain_auto" (optional),
         "user_ref": "USR-1005" (optional — unlocks account-specific tools: credit score,
         loan/claim status, fraud-flag explanation; omit for pure document Q&A),
         "agent_mode": true (default) | false (skip tool-calling, plain RAG document answer only) }"""
-        payload = await request.json()
-        query = payload.get("query")
-        if not query:
-            return json({"error": "query is required"}, status=400)
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
+        # Authenticated (any valid role) — this is a general Q&A surface, not
+        # tied to one user's financial records, so no ownership check beyond
+        # "you have a valid token" is required here. Account-specific tools
+        # inside the multi-tool agent are separately scoped to the calling
+        # user_ref (see assistant_agent.py).
+        auth_identity = require_identity(request)
 
         raw = await request.json()
         try:
@@ -101,21 +90,17 @@ class AssistantController(APIController):
                 status=429,
             )
 
-<<<<<<< HEAD
-        result = await _rag_service.answer(body.query, provider_override=body.llm_provider)
-
-        await log_audit_event(
-            action="assistant.ask", actor_ref=auth_identity.get("sub"), actor_role=auth_identity.get("role"),
-            target_user_ref=body.user_ref, details={"llm_provider": result.get("llm_provider"), "cache_hit": result.get("cache_hit")},
-        )
-        return json(result)
-=======
-        if not payload.get("agent_mode", True):
+        if not body.agent_mode:
             # Cheap path: a single retrieval + single LLM call, no tool-calling
             # loop — useful when the caller just wants the old pure-RAG
             # behavior without the extra LLM round-trips a tool-calling agent
-            # can take (cost/latency control, per the cross-cutting guardrail).
-            result = await _rag_service.answer(query, provider_override=payload.get("llm_provider"))
+            # can take (cost/latency control).
+            result = await _rag_service.answer(body.query, provider_override=body.llm_provider)
+
+            await log_audit_event(
+                action="assistant.ask", actor_ref=auth_identity.get("sub"), actor_role=auth_identity.get("role"),
+                target_user_ref=body.user_ref, details={"llm_provider": result.get("llm_provider"), "cache_hit": result.get("cache_hit")},
+            )
             return json(result)
 
         # Multi-tool agent: routes to domain tools (credit score, loan/claim
@@ -126,16 +111,19 @@ class AssistantController(APIController):
         # to it.
         from app.services.ai.assistant_agent import MultiToolAssistant
 
-        user_ref = payload.get("user_ref")
         async with AsyncSessionLocal() as db:
             user = None
-            if user_ref:
-                user_result = await db.execute(select(User).where(User.user_ref == user_ref))
+            if body.user_ref:
+                user_result = await db.execute(select(User).where(User.user_ref == body.user_ref))
                 user = user_result.scalar_one_or_none()
                 if user is None:
                     return json({"error": "Unknown user_ref"}, status=404)
 
             assistant = MultiToolAssistant(db, _rag_service)
-            result = await assistant.ask(query, user)
-            return json(result)
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
+            result = await assistant.ask(body.query, user)
+
+        await log_audit_event(
+            action="assistant.ask", actor_ref=auth_identity.get("sub"), actor_role=auth_identity.get("role"),
+            target_user_ref=body.user_ref, details={"agent_mode": True},
+        )
+        return json(result)

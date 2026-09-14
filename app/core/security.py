@@ -60,6 +60,13 @@ def verify_access_token(token: str) -> dict | None:
         return None
     if payload.get("role") not in VALID_ROLES:
         return None
+    # Fix: a refresh token (create_refresh_token sets "type": "refresh") has
+    # the same "sub"/"role" shape as an access token and, without this check,
+    # was accepted here as a valid Bearer access token — letting a 14-day-lived
+    # refresh token do everything a 60-minute access token can do if it leaked.
+    # Access tokens never carry a "type" claim, so reject anything that does.
+    if payload.get("type") is not None:
+        return None
     return payload
 
 

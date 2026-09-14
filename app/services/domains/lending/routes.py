@@ -10,13 +10,9 @@ from sqlalchemy import select
 from app.core.audit import log_audit_event
 from app.core.auth_middleware import ensure_owner_or_role, require_identity
 from app.db.postgres import AsyncSessionLocal
-<<<<<<< HEAD
 from app.db.redis_client import check_rate_limit
-from app.models.postgres_models import CreditScore, User
-from app.services.domains.lending.schemas import LoanApplicationRequest
-=======
 from app.models.postgres_models import CreditScore, LoanApplication, User
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
+from app.services.domains.lending.schemas import LoanApplicationRequest
 from app.services.domains.lending.service import LendingService
 
 _ANALYST_ROLES = ("analyst", "admin")
@@ -31,8 +27,8 @@ class LendingController(APIController):
     async def submit_application(self, request: Request) -> json:
         """Body: { "user_ref": "USR-1005", "loan_type": "msme_working_capital",
         "requested_amount_inr": 300000, "purpose": "...", "collateral_provided": false,
-<<<<<<< HEAD
-        "gst_data_available": true, "bank_statement_months_provided": 12 }"""
+        "gst_data_available": true, "bank_statement_months_provided": 12,
+        "explain": true (optional — generates an RBI-style plain-language rationale) }"""
         identity = require_identity(request)
 
         raw = await request.json()
@@ -48,14 +44,6 @@ class LendingController(APIController):
         allowed, _ = await check_rate_limit(identity["sub"], route="lending_apply", limit=10, window_seconds=60)
         if not allowed:
             return json({"error": "Rate limit exceeded. Try again shortly."}, status=429)
-=======
-        "gst_data_available": true, "bank_statement_months_provided": 12,
-        "explain": true (optional — generates an RBI-style plain-language rationale) }"""
-        payload = await request.json()
-        user_ref = payload.get("user_ref")
-        if not user_ref:
-            return json({"error": "user_ref is required"}, status=400)
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf
 
         async with AsyncSessionLocal() as db:
             user_result = await db.execute(select(User).where(User.user_ref == body.user_ref))
@@ -70,8 +58,10 @@ class LendingController(APIController):
 
             service = LendingService(db)
             result = await service.submit_application(
-<<<<<<< HEAD
-                user, body.model_dump(), latest_credit_score=latest_score.score if latest_score else None
+                user,
+                body.model_dump(),
+                latest_credit_score=latest_score.score if latest_score else None,
+                generate_rationale=body.explain,
             )
 
         await log_audit_event(
@@ -80,13 +70,6 @@ class LendingController(APIController):
             details={"application_ref": result.get("application_ref"), "status": result.get("status")},
         )
         return json(result)
-=======
-                user,
-                payload,
-                latest_credit_score=latest_score.score if latest_score else None,
-                generate_rationale=bool(payload.get("explain", False)),
-            )
-            return json(result)
 
     @post("/applications/{application_ref}/agent-review")
     async def agent_review(self, application_ref: str) -> json:
@@ -145,4 +128,3 @@ class LendingController(APIController):
             }
             draft = await agent.draft_document_request(user, application_dict)
             return json({"application_ref": application_ref, "draft_message": draft})
->>>>>>> 3646832acdd6b8b99d0b0da0a8bec52147ac1cdf

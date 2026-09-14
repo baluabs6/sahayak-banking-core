@@ -10,3 +10,4 @@ class LoanApplicationRequest(BaseModel):
     collateral_provided: bool = False
     gst_data_available: bool = False
     bank_statement_months_provided: int = Field(0, ge=0, le=600)
+    explain: bool = False  # opt-in: generates an RBI-style plain-language rationale
