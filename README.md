@@ -2,9 +2,9 @@
 
 **Financial inclusion, real-time fraud defense, cash-flow lending, and parametric insurance — one backend, four problems that usually need four separate vendors.**
 
-Backend-only system (no frontend) built for India-specific finance-sector
-problems: alt-data credit scoring for people with no formal credit
-history, real-time transaction fraud detection, cash-flow-based
+"Backend System (RestAPI Calls and Microservices)" built for India-specific
+finance-sector problems: alt-data credit scoring for people with no formal
+credit history, real-time transaction fraud detection, cash-flow-based
 MSME/personal lending, and parametric (auto-payout) insurance claims —
 all sitting behind a shared, multi-provider RAG/LLM assistant layer and a
 common security/auth boundary.
