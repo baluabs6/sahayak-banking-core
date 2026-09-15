@@ -105,7 +105,7 @@ def get_settings() -> Settings:
     settings = Settings()
     # Fail fast rather than silently signing tokens with a known placeholder
     # secret outside local dev — this used to default to the literal string
-    # "change-me-in-production" with nothing enforcing that anyone actually
+    # "****************************" with nothing enforcing that anyone actually
     # changed it. This is a first, immediate check; validate_production_config()
     # below runs the fuller set of checks from app.main's on_start hook.
     if settings.environment != "local" and settings.jwt_secret == _PLACEHOLDER_JWT_SECRET:

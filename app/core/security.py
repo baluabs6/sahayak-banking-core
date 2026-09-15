@@ -101,6 +101,6 @@ def is_secret_strong_enough(secret: str, min_length: int = 32) -> bool:
     staging/production - see `app/config.py::validate_production_config`."""
     if not secret:
         return False
-    if secret in {"change-me-in-production", "secret", "changeme"}:
+    if secret in {"****************************", "secret", "changeme"}:
         return False
     return len(secret) >= min_length
